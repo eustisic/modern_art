@@ -67,7 +67,7 @@ func NewClient(apiKey, baseURL string) *ChatGPTClient {
 
 // SendChatCompletionRequest sends a request to the ChatGPT chat completions endpoint.
 func (c *ChatGPTClient) SendChatCompletionRequest(prompt string) (*ChatCompletionResponse, error) {
-	content := "Describe the artistic style of " + prompt + " in 75 words or less"
+	content := "In 25 words classify the artistic style of " + prompt
 
 	requestBody, err := json.Marshal(ChatCompletionRequest{
 		Model: "gpt-3.5-turbo",
@@ -77,7 +77,6 @@ func (c *ChatGPTClient) SendChatCompletionRequest(prompt string) (*ChatCompletio
 				Content: content,
 			},
 		},
-		MaxTokens: 25,
 	})
 
 	if err != nil {

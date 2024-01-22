@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -17,9 +16,11 @@ func PostPrompt(kv kvstore.StoreInterface, w http.ResponseWriter, r *http.Reques
 	query := r.URL.Query()
 	q := query.Get("q")
 
+	fmt.Println(q)
+
 	if q == "" {
-		utils.EncodeError(w, "No query string found")
-		http.Error(w, "Bad Request", http.StatusBadRequest)
+		http.Error(w, "Bad Request: No query string found", http.StatusBadRequest)
+		return
 	}
 	// this function will check db for prompt - the prompt will be the name of an artist
 	var prompt string
@@ -30,8 +31,8 @@ func PostPrompt(kv kvstore.StoreInterface, w http.ResponseWriter, r *http.Reques
 		// query API and get prompt then insert into db
 		prompt, err = GetPrompt(kv, q)
 		if err != nil {
-			utils.EncodeError(w, err.Error())
-			http.Error(w, "Bad Request", http.StatusBadRequest)
+			http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
+			return
 		}
 
 		kv.Insert(q, prompt)
@@ -61,9 +62,7 @@ func GetPrompt(kv kvstore.StoreInterface, q string) (string, error) {
 		return "", err
 	}
 
-	if len(resp.Choices) == 0 {
-		return "", errors.New("invalid response from chat API")
-	}
+	utils.LogObject(resp)
 
 	return resp.Choices[0].Message.Content, nil
 }
