@@ -3,12 +3,13 @@ package chatgptclient
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 )
 
 type ChatGPTClientInterface interface {
-	SendRequest(prompt string) (*ResponseBody, error)
+	SendRequest(prompt string) (*ChatCompletionResponse, error)
 }
 
 // ChatGPTClient holds the configuration for the API client
@@ -17,9 +18,43 @@ type ChatGPTClient struct {
 	BaseURL string
 }
 
-type OpenAIRequest struct {
-	prompt     string
-	max_tokens int
+type ChatRequestMessage struct {
+	Role    string `json:"role"` // "system", "user", or "assistant"
+	Content string `json:"content"`
+}
+
+type ChatCompletionRequest struct {
+	Model     string               `json:"model"`
+	Messages  []ChatRequestMessage `json:"messages"`
+	MaxTokens int                  `json:"max_tokens"` // Add this line
+}
+
+type ChatCompletionResponse struct {
+	ID                string   `json:"id"`
+	Object            string   `json:"object"`
+	Created           int64    `json:"created"`
+	Model             string   `json:"model"`
+	SystemFingerprint string   `json:"system_fingerprint"`
+	Choices           []Choice `json:"choices"`
+	Usage             Usage    `json:"usage"`
+}
+
+type Choice struct {
+	Index        int         `json:"index"`
+	Message      ChatMessage `json:"message"`
+	Logprobs     interface{} `json:"logprobs"` // null or more complex structure
+	FinishReason string      `json:"finish_reason"`
+}
+
+type ChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type Usage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
 }
 
 // NewClient creates a new instance of ChatGPTClient
@@ -30,24 +65,27 @@ func NewClient(apiKey, baseURL string) *ChatGPTClient {
 	}
 }
 
-// RequestBody is the structure of the request body for the ChatGPT API
-type RequestBody struct {
-	Prompt string `json:"prompt"`
-}
+// SendChatCompletionRequest sends a request to the ChatGPT chat completions endpoint.
+func (c *ChatGPTClient) SendChatCompletionRequest(prompt string) (*ChatCompletionResponse, error) {
+	content := "Describe the artistic style of " + prompt + " in 75 words or less"
 
-// ResponseBody is the structure of the response from the ChatGPT API
-type ResponseBody struct {
-	Responses []string `json:"responses"`
-}
+	requestBody, err := json.Marshal(ChatCompletionRequest{
+		Model: "gpt-3.5-turbo",
+		Messages: []ChatRequestMessage{
+			{
+				Role:    "user",
+				Content: content,
+			},
+		},
+		MaxTokens: 25,
+	})
 
-// SendRequest sends a request to the ChatGPT API and returns the response
-func (c *ChatGPTClient) SendRequest(prompt string) (*ResponseBody, error) {
-	requestBody, err := json.Marshal(RequestBody{Prompt: prompt})
 	if err != nil {
+		fmt.Println("Failed to marshal request body")
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", c.BaseURL, bytes.NewBuffer(requestBody))
+	req, err := http.NewRequest("POST", c.BaseURL+"/chat/completions", bytes.NewBuffer(requestBody))
 	if err != nil {
 		return nil, err
 	}
@@ -67,10 +105,10 @@ func (c *ChatGPTClient) SendRequest(prompt string) (*ResponseBody, error) {
 		return nil, err
 	}
 
-	var responseBody ResponseBody
-	if err := json.Unmarshal(body, &responseBody); err != nil {
+	var response ChatCompletionResponse
+	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, err
 	}
 
-	return &responseBody, nil
+	return &response, nil
 }

@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 
 # compile src code, output as s3-api
-RUN go build -o s3-api .
+RUN go build -o modern_art .
 
 # start application
 CMD ["./modern_art"]

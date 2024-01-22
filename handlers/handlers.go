@@ -1,29 +1,40 @@
 package handlers
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
 
 	"modern_art/kvstore"
+	chatgptclient "modern_art/llm_clients"
+	"modern_art/utils"
 )
 
 func PostPrompt(kv kvstore.StoreInterface, w http.ResponseWriter, r *http.Request) {
 	// get serarch string from prompt
+	fmt.Println(r.URL.Query())
 	query := r.URL.Query()
 	q := query.Get("q")
 
 	if q == "" {
-		json.NewEncoder(w).Encode(map[string]string{"message": "No query string found"})
+		utils.EncodeError(w, "No query string found")
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 	}
 	// this function will check db for prompt - the prompt will be the name of an artist
 	var prompt string
 	var found bool
+	var err error
 
 	if prompt, found = kv.Search(q); !found {
 		// query API and get prompt then insert into db
-		prompt = GetPrompt(kv, q)
+		prompt, err = GetPrompt(kv, q)
+		if err != nil {
+			utils.EncodeError(w, err.Error())
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+		}
+
+		kv.Insert(q, prompt)
 	}
 
 	fmt.Println(prompt)
@@ -41,6 +52,18 @@ func PostPromptHandler(kv kvstore.StoreInterface) http.HandlerFunc {
 	}
 }
 
-func GetPrompt(kv kvstore.StoreInterface, q string) string {
-	return ""
+func GetPrompt(kv kvstore.StoreInterface, q string) (string, error) {
+	gptClient := chatgptclient.NewClient(os.Getenv("OPENAI_KEY"), os.Getenv("CHAT_URL"))
+
+	resp, err := gptClient.SendChatCompletionRequest(q)
+
+	if err != nil {
+		return "", err
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", errors.New("invalid response from chat API")
+	}
+
+	return resp.Choices[0].Message.Content, nil
 }
