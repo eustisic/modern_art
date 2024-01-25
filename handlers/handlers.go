@@ -3,20 +3,15 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"os"
 
 	"modern_art/kvstore"
 	chatgptclient "modern_art/llm_clients"
-	"modern_art/utils"
 )
 
-func PostPrompt(kv kvstore.StoreInterface, w http.ResponseWriter, r *http.Request) {
+func PostPrompt(kv kvstore.StoreInterface, gptClient chatgptclient.ChatGPTClientInterface, w http.ResponseWriter, r *http.Request) {
 	// get serarch string from prompt
-	fmt.Println(r.URL.Query())
 	query := r.URL.Query()
 	q := query.Get("q")
-
-	fmt.Println(q)
 
 	if q == "" {
 		http.Error(w, "Bad Request: No query string found", http.StatusBadRequest)
@@ -29,7 +24,7 @@ func PostPrompt(kv kvstore.StoreInterface, w http.ResponseWriter, r *http.Reques
 
 	if prompt, found = kv.Search(q); !found {
 		// query API and get prompt then insert into db
-		prompt, err = GetPrompt(kv, q)
+		prompt, err = GetPrompt(kv, gptClient, q)
 		if err != nil {
 			http.Error(w, "Bad Request: "+err.Error(), http.StatusBadRequest)
 			return
@@ -38,23 +33,16 @@ func PostPrompt(kv kvstore.StoreInterface, w http.ResponseWriter, r *http.Reques
 		kv.Insert(q, prompt)
 	}
 
-	fmt.Println(prompt)
-
-	// if it does not find a promt it will populate the database with a description of that artists style
-
-	// It will then query for art generation
-
-	// The
+	GenerateImage(gptClient, prompt)
 }
 
-func PostPromptHandler(kv kvstore.StoreInterface) http.HandlerFunc {
+func PostPromptHandler(kv kvstore.StoreInterface, gptClient chatgptclient.ChatGPTClientInterface) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		PostPrompt(kv, w, r)
+		PostPrompt(kv, gptClient, w, r)
 	}
 }
 
-func GetPrompt(kv kvstore.StoreInterface, q string) (string, error) {
-	gptClient := chatgptclient.NewClient(os.Getenv("OPENAI_KEY"), os.Getenv("CHAT_URL"))
+func GetPrompt(kv kvstore.StoreInterface, gptClient chatgptclient.ChatGPTClientInterface, q string) (string, error) {
 
 	resp, err := gptClient.SendChatCompletionRequest(q)
 
@@ -62,7 +50,14 @@ func GetPrompt(kv kvstore.StoreInterface, q string) (string, error) {
 		return "", err
 	}
 
-	utils.LogObject(resp)
-
 	return resp.Choices[0].Message.Content, nil
+}
+
+func GenerateImage(gptClient chatgptclient.ChatGPTClientInterface, prompt string) {
+
+	err := gptClient.SendImageRequest(prompt)
+
+	if err != nil {
+		fmt.Println(err)
+	}
 }

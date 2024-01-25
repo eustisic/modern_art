@@ -9,7 +9,8 @@ import (
 )
 
 type ChatGPTClientInterface interface {
-	SendRequest(prompt string) (*ChatCompletionResponse, error)
+	SendChatCompletionRequest(prompt string) (*ChatCompletionResponse, error)
+	SendImageRequest(prompt string) error
 }
 
 // ChatGPTClient holds the configuration for the API client
@@ -26,7 +27,14 @@ type ChatRequestMessage struct {
 type ChatCompletionRequest struct {
 	Model     string               `json:"model"`
 	Messages  []ChatRequestMessage `json:"messages"`
-	MaxTokens int                  `json:"max_tokens"` // Add this line
+	MaxTokens int                  `json:"max_tokens"`
+}
+
+type ImageRequest struct {
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
+	Size   string `json:size`
+	n      int    `json:n` // number of images to generate
 }
 
 type ChatCompletionResponse struct {
@@ -66,17 +74,19 @@ func NewClient(apiKey, baseURL string) *ChatGPTClient {
 }
 
 // SendChatCompletionRequest sends a request to the ChatGPT chat completions endpoint.
-func (c *ChatGPTClient) SendChatCompletionRequest(prompt string) (*ChatCompletionResponse, error) {
-	content := "In 25 words classify the artistic style of " + prompt
+func (c *ChatGPTClient) SendChatCompletionRequest(artist string) (*ChatCompletionResponse, error) {
+	promptFormat := "Create a list of 10 comma separated words that describe the style of %s. Limit of 10 words"
+	prompt := fmt.Sprintf(promptFormat, artist)
 
 	requestBody, err := json.Marshal(ChatCompletionRequest{
 		Model: "gpt-3.5-turbo",
 		Messages: []ChatRequestMessage{
 			{
 				Role:    "user",
-				Content: content,
+				Content: prompt,
 			},
 		},
+		MaxTokens: 50,
 	})
 
 	if err != nil {
@@ -84,7 +94,7 @@ func (c *ChatGPTClient) SendChatCompletionRequest(prompt string) (*ChatCompletio
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", c.BaseURL+"/chat/completions", bytes.NewBuffer(requestBody))
+	req, err := http.NewRequest("POST", c.BaseURL+"chat/completions", bytes.NewBuffer(requestBody))
 	if err != nil {
 		return nil, err
 	}
@@ -110,4 +120,46 @@ func (c *ChatGPTClient) SendChatCompletionRequest(prompt string) (*ChatCompletio
 	}
 
 	return &response, nil
+}
+
+func (c *ChatGPTClient) SendImageRequest(prompt string) error {
+	promptFormat := "Generate an image from this description: %s"
+	prompt = fmt.Sprintf(promptFormat, prompt)
+
+	requestBody, err := json.Marshal(ImageRequest{
+		Model:  "dall-e-2",
+		Prompt: prompt,
+		n:      1,
+		Size:   "1024x1024",
+	})
+
+	if err != nil {
+		fmt.Println("Failed to marshal request body")
+		return err
+	}
+
+	req, err := http.NewRequest("POST", c.BaseURL+"images/generations", bytes.NewBuffer(requestBody))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	// upload to S3
+	fmt.Println(body)
+
+	return nil
 }

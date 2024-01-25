@@ -5,6 +5,7 @@ import (
 	"log"
 	"modern_art/handlers"
 	"modern_art/kvstore"
+	chatgptclient "modern_art/llm_clients"
 	"net/http"
 	"os"
 
@@ -19,7 +20,7 @@ func main() {
 	}
 
 	kv := kvstore.NewStore()
-	kv.Insert("Hasui Kawase", "Serene landscapes, traditional woodblock prints, atmospheric, detailed, muted colors, realism, influenced by Western Impressionism")
+	gptClient := chatgptclient.NewClient(os.Getenv("OPENAI_KEY"), os.Getenv("OPENAI_URL"))
 
 	router := mux.NewRouter()
 
@@ -29,7 +30,7 @@ func main() {
 	})
 
 	// define routes
-	router.HandleFunc("/prompt", handlers.PostPromptHandler(kv)).Methods("POST")
+	router.HandleFunc("/prompt", handlers.PostPromptHandler(kv, gptClient)).Methods("POST")
 
 	http.Handle("/", router)
 
