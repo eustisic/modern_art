@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"fmt"
+	"image"
 	"net/http"
 
 	"modern_art/kvstore"
 	chatgptclient "modern_art/llm_clients"
+	s3_client "modern_art/s3_client"
 )
 
 func PostPrompt(kv kvstore.StoreInterface, gptClient chatgptclient.ChatGPTClientInterface, w http.ResponseWriter, r *http.Request) {
@@ -21,6 +23,7 @@ func PostPrompt(kv kvstore.StoreInterface, gptClient chatgptclient.ChatGPTClient
 	var prompt string
 	var found bool
 	var err error
+	var image image.Image
 
 	if prompt, found = kv.Search(q); !found {
 		// query API and get prompt then insert into db
@@ -33,7 +36,18 @@ func PostPrompt(kv kvstore.StoreInterface, gptClient chatgptclient.ChatGPTClient
 		kv.Insert(q, prompt)
 	}
 
-	GenerateImage(gptClient, prompt)
+	image, err = GenerateImage(gptClient, prompt)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	err = s3_client.PostImage(q, image)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func PostPromptHandler(kv kvstore.StoreInterface, gptClient chatgptclient.ChatGPTClientInterface) http.HandlerFunc {
@@ -53,11 +67,14 @@ func GetPrompt(kv kvstore.StoreInterface, gptClient chatgptclient.ChatGPTClientI
 	return resp.Choices[0].Message.Content, nil
 }
 
-func GenerateImage(gptClient chatgptclient.ChatGPTClientInterface, prompt string) {
+func GenerateImage(gptClient chatgptclient.ChatGPTClientInterface, prompt string) (image.Image, error) {
 
-	err := gptClient.SendImageRequest(prompt)
+	image, err := gptClient.SendImageRequest(prompt)
 
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("Error generating image")
+		return nil, err
 	}
+
+	return image, nil
 }

@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
 	"io"
 	"net/http"
 )
 
 type ChatGPTClientInterface interface {
 	SendChatCompletionRequest(prompt string) (*ChatCompletionResponse, error)
-	SendImageRequest(prompt string) error
+	SendImageRequest(prompt string) (image.Image, error)
 }
 
 // ChatGPTClient holds the configuration for the API client
@@ -30,13 +31,6 @@ type ChatCompletionRequest struct {
 	MaxTokens int                  `json:"max_tokens"`
 }
 
-type ImageRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Size   string `json:size`
-	n      int    `json:n` // number of images to generate
-}
-
 type ChatCompletionResponse struct {
 	ID                string   `json:"id"`
 	Object            string   `json:"object"`
@@ -45,6 +39,21 @@ type ChatCompletionResponse struct {
 	SystemFingerprint string   `json:"system_fingerprint"`
 	Choices           []Choice `json:"choices"`
 	Usage             Usage    `json:"usage"`
+}
+
+type ImageRequest struct {
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
+	n      int    `json:n` // number of images to generate
+}
+
+type ImageUrls struct {
+	URL string `json:"url"`
+}
+
+type ImageResponse struct {
+	Created int64       `json:"created"`
+	Data    []ImageUrls `json:"data"`
 }
 
 type Choice struct {
@@ -122,7 +131,7 @@ func (c *ChatGPTClient) SendChatCompletionRequest(artist string) (*ChatCompletio
 	return &response, nil
 }
 
-func (c *ChatGPTClient) SendImageRequest(prompt string) error {
+func (c *ChatGPTClient) SendImageRequest(prompt string) (image.Image, error) {
 	promptFormat := "Generate an image from this description: %s"
 	prompt = fmt.Sprintf(promptFormat, prompt)
 
@@ -130,17 +139,16 @@ func (c *ChatGPTClient) SendImageRequest(prompt string) error {
 		Model:  "dall-e-2",
 		Prompt: prompt,
 		n:      1,
-		Size:   "1024x1024",
 	})
 
 	if err != nil {
 		fmt.Println("Failed to marshal request body")
-		return err
+		return nil, err
 	}
 
 	req, err := http.NewRequest("POST", c.BaseURL+"images/generations", bytes.NewBuffer(requestBody))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
@@ -149,17 +157,39 @@ func (c *ChatGPTClient) SendImageRequest(prompt string) error {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// upload to S3
-	fmt.Println(body)
+	var respJson ImageResponse
+	err = json.Unmarshal(body, &respJson)
+	if err != nil {
+		fmt.Println("error parsing to json")
+		return nil, err
+	}
 
-	return nil
+	// download image
+	img, err := downloadImage(respJson.Data[0].URL)
+	if err != nil {
+		fmt.Println("error downloading image")
+		return nil, err
+	}
+
+	return img, nil
+}
+
+func downloadImage(url string) (image.Image, error) {
+	response, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	img, _, err := image.Decode(response.Body)
+	return img, err
 }

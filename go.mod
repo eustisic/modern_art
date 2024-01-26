@@ -8,6 +8,8 @@ require (
 )
 
 require (
+	github.com/aws/aws-sdk-go v1.50.3 // indirect
 	github.com/go-resty/resty/v2 v2.11.0 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	golang.org/x/net v0.17.0 // indirect
 )
