@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
+	_ "image/png"
 	"io"
 	"net/http"
 )
@@ -185,7 +186,8 @@ func (c *ChatGPTClient) SendImageRequest(prompt string) (image.Image, error) {
 
 func downloadImage(url string) (image.Image, error) {
 	response, err := http.Get(url)
-	if err != nil {
+	if err != nil || response.StatusCode != 200 {
+		fmt.Println("error getting image from url")
 		return nil, err
 	}
 	defer response.Body.Close()
